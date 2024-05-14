@@ -3,19 +3,39 @@ const app = express();
 const bcrypt = require('bcrypt');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const morgan = require('morgan')
+const {db} = require('./firebase')
 
 app.use(express.json());
 app.use(cors());
+app.use(morgan('dev'));
+
+require('./firebase')
 
 const users = [];
 
-app.get('/', (req, res) => {
+
+console.log('Server running in port 3000')
+
+app.get('/',  (req, res) => {
     res.send('Hola');
 });
 
-app.get('/users', (req, res) => {
-    res.json(users);
+
+app.get('/users', async (req, res) => {
+    try {
+        const snapshot = await db.collection('contacts').get();
+        const users = [];
+        snapshot.forEach(doc => {
+            users.push(doc.data());
+        });
+        res.json(users);
+    } catch (error) {
+        console.error('Error retrieving users:', error);
+        res.status(500).send('Internal Server Error');
+    }
 });
+
 
 app.post('/users', async (req, res) => {
     try {
@@ -29,6 +49,13 @@ app.post('/users', async (req, res) => {
             email: req.body.email,
             password: hashedPassword
         };
+        await db.collection('contacts').add({
+            firstName: req.body.firstName,
+            lastName: req.body.lastName,
+            email: req.body.email,
+            password: req.body.password,
+        }); 
+        
         users.push(user);
         res.status(201).send();
     } catch {
@@ -51,5 +78,32 @@ app.post('/users/login', async (req, res) => {
         res.status(500).send();
     }
 });
+
+app.get('/edit-contact/:id', async (req, res) => {
+    try {
+        const doc = await db.collection("contacts").doc(req.params.id).get();
+        if (!doc.exists) {
+            return res.status(404).send('Contact not found');
+        }
+        const contact = {
+            id: doc.id,
+            ...doc.data(),
+        };
+        res.json(contact);
+    } catch (error) {
+        console.error('Error retrieving contact:', error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+app.get('/delete-contact/:id', async (req, res) => {
+
+    await db.collection('contacts').doc(req.params.id).delete();
+    
+    res.send('contact deleted');
+    
+    })
+
+
 
 app.listen(3000);
