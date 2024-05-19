@@ -8,8 +8,11 @@ const { db } = require("./firebase");
 
 const app = express();
 const saltRounds = 10;
+
+
 const PORT = process.env.PORT || 3000;
 
+let users = []; // Declaración de la variable users
 const listUserAdmin = [{ email: "admin@admin.com", password: "admin" }];
 let refreshTokens = [];
 
@@ -17,7 +20,7 @@ app.use(express.json());
 app.use(cors());
 app.use(morgan("dev"));
 
-const users = [];
+console.log("Server running in port 3000");
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
@@ -27,26 +30,26 @@ app.get("/", (req, res) => {
   res.send("Hola");
 });
 
-app.get("/users", async (req, res) => {
-  try {
-    const snapshot = await db.collection("contacts").get();
-    const users = [];
-    snapshot.forEach((doc) => {
-      const userData = doc.data();
-      userData.id = doc.id;
-      users.push(userData);
-    });
-    res.json(users);
-  } catch (error) {
-    console.error("Error retrieving users:", error);
-    res.status(500).send("Internal Server Error");
-  }
-});
+// app.get("/users", async (req, res) => {
+//   try {
+//     const snapshot = await db.collection("contacts").get();
+//     const users = [];
+//     snapshot.forEach((doc) => {
+//       const userData = doc.data();
+//       userData.id = doc.id;
+//       users.push(userData);
+//     });
+//     res.json(users);
+//   } catch (error) {
+//     console.error("Error retrieving users:", error);
+//     res.status(500).send("Internal Server Error");
+//   }
+// });
 
 app.post("/users", async (req, res) => {
   try {
     const salt = await bcrypt.genSalt(saltRounds);
-    const hashedPassword = await bcrypt.hash(req.body.password, salt);
+    const hashedPassword = await bcrypt.hash(req.body.password, saltRounds);
     const user = {
       firstName: req.body.firstName,
       lastName: req.body.lastName,
@@ -56,7 +59,6 @@ app.post("/users", async (req, res) => {
     const userRef = await db.collection("contacts").add(user);
     const userId = userRef.id;
     console.log("User ID:", userId);
-    users.push(user);
     res.status(201).send();
   } catch (error) {
     console.error("Error creating user:", error);
@@ -64,15 +66,36 @@ app.post("/users", async (req, res) => {
   }
 });
 
-app.post("/users/login", authenticateToken, async (req, res) => {
-  const user = users.find((user) => user.email === req.body.email);
-  if (!user) {
-    return res.status(400).send("Cannot find user");
-  }
+
+app.post("/users/login", async (req, res) => {
   try {
-    if (await bcrypt.compare(req.body.password, user.password)) {
+    const email = req.body.email;
+    const password = req.body.password;
+
+    // Consultar la base de datos para encontrar al usuario
+    const snapshot = await db
+      .collection("contacts")
+      .where("email", "==", email)
+      .get();
+    if (snapshot.empty) {
+      return res.status(400).send("Cannot find user");
+    }
+
+    let user;
+    snapshot.forEach((doc) => {
+      user = doc.data();
+      user.id = doc.id;
+    });
+    // console.log("User found:", user);
+    // console.log("Entered password:", password);
+    // console.log("Stored password:", user.password); 
+
+    // Comparar la contraseña ingresada con la almacenada en la base de datos
+    if (await bcrypt.compare(password, user.password)) {
+      // Contraseña correcta
       res.send("Success");
     } else {
+      // Contraseña incorrecta
       res.send("Not allowed");
     }
   } catch (error) {
@@ -80,6 +103,7 @@ app.post("/users/login", authenticateToken, async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
 
 app.get("/edit-contact/:id", async (req, res) => {
   try {
