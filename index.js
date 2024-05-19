@@ -4,6 +4,7 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const morgan = require("morgan");
 const { db } = require("./firebase");
+const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 
@@ -69,9 +70,20 @@ app.post("/users/login", async (req, res) => {
     console.log("Stored password:", user.password);
 
     if (password === user.password) {
-      res.send("Success");
+      const accessToken = generateAccessToken({ email: user.email });
+      const refreshToken = jwt.sign(
+        { email: user.email },
+        process.env.REFRESH_TOKEN_SECRET
+      );
+      refreshTokens.push(refreshToken);
+      res.cookie("session", refreshToken, {
+        httpOnly: true,
+        secure: true,
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+      res.json({ accessToken, refreshToken });
     } else {
-      res.send("Not allowed");
+      res.status(403).send("Not allowed");
     }
   } catch (error) {
     console.error("Error logging in:", error);
