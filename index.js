@@ -27,14 +27,20 @@ app.get('/users', async (req, res) => {
         const snapshot = await db.collection('contacts').get();
         const users = [];
         snapshot.forEach(doc => {
-            users.push(doc.data());
+
+            const userData = doc.data();
+            userData.id = doc.id;
+
+            users.push(userData);
         });
+       
         res.json(users);
     } catch (error) {
         console.error('Error retrieving users:', error);
         res.status(500).send('Internal Server Error');
     }
 });
+
 
 
 app.post('/users', async (req, res) => {
@@ -55,7 +61,8 @@ app.post('/users', async (req, res) => {
             email: req.body.email,
             password: req.body.password,
         }); 
-        
+        const userId = userRef.id;
+        console.log('User ID:', userId);
         users.push(user);
         res.status(201).send();
     } catch {
@@ -80,29 +87,30 @@ app.post('/users/login', async (req, res) => {
 });
 
 app.get('/edit-contact/:id', async (req, res) => {
-    try {
-        const doc = await db.collection("contacts").doc(req.params.id).get();
-        if (!doc.exists) {
-            return res.status(404).send('Contact not found');
+  try {
+      const doc = await db.collection("contacts").doc(req.params.id).get();
+    if (!doc.exists) {
+      return res.status(404).send('Contact not found');
         }
-        const contact = {
-            id: doc.id,
-            ...doc.data(),
-        };
-        res.json(contact);
-    } catch (error) {
-        console.error('Error retrieving contact:', error);
-        res.status(500).send('Internal Server Error');
-    }
+          const contact = {
+           id: doc.id,
+        ...doc.data(),
+    };
+    res.json(contact);
+} catch (error) {
+    console.error('Error retrieving contact:', error);
+    res.status(500).send('Internal Server Error');
+}
 });
 
 app.get('/delete-contact/:id', async (req, res) => {
 
-    await db.collection('contacts').doc(req.params.id).delete();
-    
-    res.send('contact deleted');
-    
-    })
+await db.collection('contacts').doc(req.params.id).delete();
+res.send('contact deleted');
+
+})
+
+
 
 
 
