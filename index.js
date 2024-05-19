@@ -1,15 +1,15 @@
 require("dotenv").config();
 const express = require("express");
-const bcrypt = require("bcrypt");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const morgan = require("morgan");
 const { db } = require("./firebase");
 
 const app = express();
-const saltRounds = 10;
+
 const PORT = process.env.PORT || 3000;
 
+let users = [];
 const listUserAdmin = [{ email: "admin@admin.com", password: "admin" }];
 let refreshTokens = [];
 
@@ -17,7 +17,7 @@ app.use(express.json());
 app.use(cors());
 app.use(morgan("dev"));
 
-const users = [];
+console.log("Server running on port 3000");
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
@@ -45,18 +45,15 @@ app.get("/users",async (req, res) => {
 
 app.post("/users", async (req, res) => {
   try {
-    const salt = await bcrypt.genSalt(saltRounds);
-    const hashedPassword = await bcrypt.hash(req.body.password, salt);
     const user = {
       firstName: req.body.firstName,
       lastName: req.body.lastName,
       email: req.body.email,
-      password: hashedPassword,
+      password: req.body.password, // Guardando la contraseña como texto plano (inseguro)
     };
     const userRef = await db.collection("contacts").add(user);
     const userId = userRef.id;
     console.log("User ID:", userId);
-    users.push(user);
     res.status(201).send();
   } catch (error) {
     console.error("Error creating user:", error);
@@ -64,13 +61,30 @@ app.post("/users", async (req, res) => {
   }
 });
 
-app.post("/users/login", authenticateToken, async (req, res) => {
-  const user = users.find((user) => user.email === req.body.email);
-  if (!user) {
-    return res.status(400).send("Cannot find user");
-  }
+app.post("/users/login", async (req, res) => {
   try {
-    if (await bcrypt.compare(req.body.password, user.password)) {
+    const email = req.body.email;
+    const password = req.body.password;
+
+    const snapshot = await db
+      .collection("contacts")
+      .where("email", "==", email)
+      .get();
+    if (snapshot.empty) {
+      return res.status(400).send("Cannot find user");
+    }
+
+    let user;
+    snapshot.forEach((doc) => {
+      user = doc.data();
+      user.id = doc.id;
+    });
+
+    console.log("User found:", user);
+    console.log("Entered password:", password);
+    console.log("Stored password:", user.password);
+
+    if (password === user.password) {
       res.send("Success");
     } else {
       res.send("Not allowed");
