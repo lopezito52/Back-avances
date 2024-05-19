@@ -1,18 +1,15 @@
 require("dotenv").config();
 const express = require("express");
-const bcrypt = require("bcrypt");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const morgan = require("morgan");
 const { db } = require("./firebase");
 
 const app = express();
-const saltRounds = 10;
-
 
 const PORT = process.env.PORT || 3000;
 
-let users = []; // Declaración de la variable users
+let users = [];
 const listUserAdmin = [{ email: "admin@admin.com", password: "admin" }];
 let refreshTokens = [];
 
@@ -20,7 +17,7 @@ app.use(express.json());
 app.use(cors());
 app.use(morgan("dev"));
 
-console.log("Server running in port 3000");
+console.log("Server running on port 3000");
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
@@ -30,31 +27,13 @@ app.get("/", (req, res) => {
   res.send("Hola");
 });
 
-// app.get("/users", async (req, res) => {
-//   try {
-//     const snapshot = await db.collection("contacts").get();
-//     const users = [];
-//     snapshot.forEach((doc) => {
-//       const userData = doc.data();
-//       userData.id = doc.id;
-//       users.push(userData);
-//     });
-//     res.json(users);
-//   } catch (error) {
-//     console.error("Error retrieving users:", error);
-//     res.status(500).send("Internal Server Error");
-//   }
-// });
-
 app.post("/users", async (req, res) => {
   try {
-    const salt = await bcrypt.genSalt(saltRounds);
-    const hashedPassword = await bcrypt.hash(req.body.password, saltRounds);
     const user = {
       firstName: req.body.firstName,
       lastName: req.body.lastName,
       email: req.body.email,
-      password: hashedPassword,
+      password: req.body.password, // Guardando la contraseña como texto plano (inseguro)
     };
     const userRef = await db.collection("contacts").add(user);
     const userId = userRef.id;
@@ -66,13 +45,11 @@ app.post("/users", async (req, res) => {
   }
 });
 
-
 app.post("/users/login", async (req, res) => {
   try {
     const email = req.body.email;
     const password = req.body.password;
 
-    // Consultar la base de datos para encontrar al usuario
     const snapshot = await db
       .collection("contacts")
       .where("email", "==", email)
@@ -86,16 +63,14 @@ app.post("/users/login", async (req, res) => {
       user = doc.data();
       user.id = doc.id;
     });
-    // console.log("User found:", user);
-    // console.log("Entered password:", password);
-    // console.log("Stored password:", user.password); 
 
-    // Comparar la contraseña ingresada con la almacenada en la base de datos
-    if (await bcrypt.compare(password, user.password)) {
-      // Contraseña correcta
+    console.log("User found:", user);
+    console.log("Entered password:", password);
+    console.log("Stored password:", user.password);
+
+    if (password === user.password) {
       res.send("Success");
     } else {
-      // Contraseña incorrecta
       res.send("Not allowed");
     }
   } catch (error) {
@@ -103,7 +78,6 @@ app.post("/users/login", async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
-
 
 app.get("/edit-contact/:id", async (req, res) => {
   try {
