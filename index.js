@@ -10,6 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 let users = [];
+
 const listUserAdmin = [{ email: "admin@admin.com", password: "admin" }];
 let refreshTokens = [];
 
@@ -49,7 +50,7 @@ app.post("/users", async (req, res) => {
       firstName: req.body.firstName,
       lastName: req.body.lastName,
       email: req.body.email,
-      password: req.body.password, // Guardando la contraseña como texto plano (inseguro)
+      password: req.body.password, 
     };
     const userRef = await db.collection("contacts").add(user);
     const userId = userRef.id;
