@@ -27,7 +27,7 @@ app.get("/", (req, res) => {
   res.send("Hola");
 });
 
-app.get("/users", authenticateToken,async (req, res) => {
+app.get("/users", async (req, res) => {
   try {
     const snapshot = await db.collection("contacts").get();
     const users = [];
@@ -43,7 +43,7 @@ app.get("/users", authenticateToken,async (req, res) => {
   }
 });
 
-app.post("/users", authenticateToken, async (req, res) => {
+app.post("/users", async (req, res) => {
   try {
     const salt = await bcrypt.genSalt(saltRounds);
     const hashedPassword = await bcrypt.hash(req.body.password, salt);
