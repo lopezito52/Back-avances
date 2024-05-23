@@ -28,35 +28,26 @@ app.get("/", (req, res) => {
 
 app.get('/users', async (req, res) => {
   try {
-    const snapshot = await db.collection('contacts').get();
-    const users = [];
-    snapshot.forEach(doc => {
-      const userData = doc.data();
-      userData.id = doc.id;
-      users.push(userData);
-    });
-    res.json(users);
-  } catch (error) {
-    console.error('Error retrieving users:', error);
-    res.status(500).send('Internal Server Error');
-  }
-});
+    const { firstName, lastName, email, password } = req.body;
 
-app.post("/users", async (req, res) => {
-  const { firstName, lastName, email, password } = req.body;
+    // Check if the required fields are present
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).send("Missing required fields");
+    }
 
-  if (!firstName || !lastName || !email || !password) {
-    return res.status(400).send("Missing required fields");
-  }
+    const user = {
+      firstName,
+      lastName,
+      email,
+      password, // Guardando la contraseña como texto plano (inseguro)
+    };
 
-  try {
-    const user = { firstName, lastName, email, password };
     const userRef = await db.collection("contacts").add(user);
     const userId = userRef.id;
     console.log("User ID:", userId);
-    res.status(201).send();
+    res.status(201).send({ userId });
   } catch (error) {
-    console.error("Error creating user:", error);
+    console.error("Error creating user:", error.message);
     res.status(500).send("Internal Server Error");
   }
 });
@@ -95,7 +86,7 @@ app.post("/users/login", async (req, res) => {
       res.status(403).send("Not allowed");
     }
   } catch (error) {
-    console.error("Error logging in:", error);
+    console.error("Error logging in:", error.message);
     res.status(500).send("Internal Server Error");
   }
 });
@@ -109,7 +100,7 @@ app.get("/edit-contact/:id", async (req, res) => {
     const contact = { id: doc.id, ...doc.data() };
     res.json(contact);
   } catch (error) {
-    console.error("Error retrieving contact:", error);
+    console.error("Error retrieving contact:", error.message);
     res.status(500).send("Internal Server Error");
   }
 });
@@ -119,7 +110,7 @@ app.delete("/delete-contact/:id", authenticateToken, async (req, res) => {
     await db.collection("contacts").doc(req.params.id).delete();
     res.send("Contact deleted");
   } catch (error) {
-    console.error("Error deleting contact:", error);
+    console.error("Error deleting contact:", error.message);
     res.status(500).send("Internal Server Error");
   }
 });
@@ -162,7 +153,7 @@ app.post("/login", (req, res) => {
     });
     res.json({ accessToken, refreshToken });
   } catch (error) {
-    console.error("Error al generar tokens:", error);
+    console.error("Error al generar tokens:", error.message);
     res.status(500).json({ message: "Error interno del servidor" });
   }
 });
