@@ -11,7 +11,6 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 
-const listUserAdmin = [{ email: "admin@admin.com", password: "admin" }];
 let refreshTokens = [];
 
 app.use(express.json());
@@ -28,27 +27,81 @@ app.get("/", (req, res) => {
 
 app.get('/users', async (req, res) => {
   try {
-    const { firstName, lastName, email, password } = req.body;
+    const snapshot = await db.collection('contacts').get();
+    const users = [];
+    snapshot.forEach(doc => {
+      const userData = doc.data();
+      userData.id = doc.id;
+      users.push(userData);
+    });
+    res.json(users);
+  } catch (error) {
+    console.error('Error retrieving users:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
 
-    // Check if the required fields are present
-    if (!firstName || !lastName || !email || !password) {
-      return res.status(400).send("Missing required fields");
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  console.log("Login attempt with email:", email);
+
+  try {
+    const snapshot = await db.collection('contacts').where('email', '==', email).get();
+
+    if (snapshot.empty) {
+      console.log("No user found with email:", email);
+      return res.status(401).json({ message: "Correo electrónico o contraseña incorrectos" });
     }
 
-    const user = {
-      firstName,
-      lastName,
-      email,
-      password, // Guardando la contraseña como texto plano (inseguro)
-    };
+    let user = null;
+    snapshot.forEach(doc => {
+      if (doc.data().password === password) {
+        user = doc.data();
+        user.id = doc.id;
+      }
+    });
 
-    const userRef = await db.collection("contacts").add(user);
-    const userId = userRef.id;
-    console.log("User ID:", userId);
-    res.status(201).send({ userId });
+    if (!user) {
+      console.log("Incorrect password for email:", email);
+      return res.status(401).json({ message: "Correo electrónico o contraseña incorrectos" });
+    }
+
+    const accessToken = generateAccessToken({ email: user.email });
+    const refreshToken = jwt.sign({ email: user.email }, process.env.REFRESH_TOKEN_SECRET);
+    
+    refreshTokens.push(refreshToken);
+    res.cookie("session", refreshToken, {
+      httpOnly: true,
+      secure: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 1 semana
+    });
+
+    res.json({ accessToken, refreshToken, userId: user.id, userName: `${user.firstName} ${user.lastName}` });
   } catch (error) {
-    console.error("Error creating user:", error.message);
-    res.status(500).send("Internal Server Error");
+    console.error("Error during login:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
+
+app.post("/users", async (req, res) => {
+  const { email, password, firstName, lastName } = req.body;
+
+  if (!email || !password || !firstName || !lastName) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+
+  try {
+    const userDoc = await db.collection('contacts').add({
+      email,
+      password,
+      firstName,
+      lastName
+    });
+
+    res.status(201).json({ message: 'User registered successfully', userId: userDoc.id });
+  } catch (error) {
+    console.error('Error registering user:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
   }
 });
 
@@ -58,20 +111,21 @@ app.post("/users/login", async (req, res) => {
   if (!email || !password) {
     return res.status(400).send("Missing email or password");
   }
-
   try {
-    const snapshot = await db.collection("contacts").where("email", "==", email).get();
-
+    const email = req.body.email;
+    const password = req.body.password;
+    const snapshot = await db
+      .collection("contacts")
+      .where("email", "==", email)
+      .get();
     if (snapshot.empty) {
       return res.status(400).send("Cannot find user");
     }
-
     let user;
     snapshot.forEach((doc) => {
       user = doc.data();
       user.id = doc.id;
     });
-
     if (password === user.password) {
       const accessToken = generateAccessToken({ email: user.email });
       const refreshToken = jwt.sign({ email: user.email }, process.env.REFRESH_TOKEN_SECRET);
@@ -81,12 +135,13 @@ app.post("/users/login", async (req, res) => {
         secure: true,
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
+      
       res.json({ accessToken, refreshToken, userId: user.id, userName: `${user.firstName} ${user.lastName}` });
     } else {
       res.status(403).send("Not allowed");
     }
   } catch (error) {
-    console.error("Error logging in:", error.message);
+    console.error("Error logging in:", error);
     res.status(500).send("Internal Server Error");
   }
 });
@@ -97,10 +152,13 @@ app.get("/edit-contact/:id", async (req, res) => {
     if (!doc.exists) {
       return res.status(404).send("Contact not found");
     }
-    const contact = { id: doc.id, ...doc.data() };
+    const contact = {
+      id: doc.id,
+      ...doc.data(),
+    };
     res.json(contact);
   } catch (error) {
-    console.error("Error retrieving contact:", error.message);
+    console.error("Error retrieving contact:", error);
     res.status(500).send("Internal Server Error");
   }
 });
@@ -110,7 +168,7 @@ app.delete("/delete-contact/:id", authenticateToken, async (req, res) => {
     await db.collection("contacts").doc(req.params.id).delete();
     res.send("Contact deleted");
   } catch (error) {
-    console.error("Error deleting contact:", error.message);
+    console.error("Error deleting contact:", error);
     res.status(500).send("Internal Server Error");
   }
 });
@@ -134,26 +192,43 @@ app.delete("/logout", (req, res) => {
   res.sendStatus(204);
 });
 
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { email, password } = req.body;
-  const user = listUserAdmin.find(user => user.email === email && user.password === password);
-
-  if (!user) {
-    return res.status(401).json({ message: "Correo electrónico o contraseña incorrectos" });
-  }
 
   try {
+    
+    const snapshot = await db.collection('contacts').where('email', '==', email).get();
+
+    if (snapshot.empty) {
+      return res.status(401).json({ message: "Correo electrónico o contraseña incorrectos" });
+    }
+
+    let user;
+    snapshot.forEach(doc => {
+      if (doc.data().password === password) {
+        user = doc.data();
+        user.id = doc.id;
+      }
+    });
+
+    if (!user) {
+      return res.status(401).json({ message: "Correo electrónico o contraseña incorrectos" });
+    }
+
+
     const accessToken = generateAccessToken({ email: user.email });
     const refreshToken = jwt.sign({ email: user.email }, process.env.REFRESH_TOKEN_SECRET);
+
     refreshTokens.push(refreshToken);
     res.cookie("session", refreshToken, {
       httpOnly: true,
       secure: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 7 * 24 * 60 * 60 * 1000, 
     });
-    res.json({ accessToken, refreshToken });
+
+    res.json({ accessToken, refreshToken, userId: user.id, userName: `${user.firstName} ${user.lastName}` });
   } catch (error) {
-    console.error("Error al generar tokens:", error.message);
+    console.error("Error al iniciar sesión:", error);
     res.status(500).json({ message: "Error interno del servidor" });
   }
 });
@@ -183,9 +258,9 @@ app.post("/tweets", async (req, res) => {
       tweet,
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     };
-    
+
     const tweetRef = await db.collection('tweets').add(tweetData);
-    
+
     await userRef.update({
       tweets: admin.firestore.FieldValue.arrayUnion({
         tweetId: tweetRef.id,
@@ -193,7 +268,7 @@ app.post("/tweets", async (req, res) => {
         timestamp: tweetData.timestamp
       })
     });
-    
+
 
     res.status(201).send('Tweet added successfully');
   } catch (error) {
@@ -237,6 +312,47 @@ app.get("/tweets/:id", async (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 });
+app.put("/tweets/:id", async (req, res) => {
+  const tweetId = req.params.id;
+  const { tweet } = req.body;
+
+  try {
+    const tweetRef = db.collection('tweets').doc(tweetId);
+    const snapshot = await tweetRef.get();
+
+    if (!snapshot.exists) {
+      return res.status(404).send('Tweet not found');
+    }
+
+    await tweetRef.update({ tweet });
+
+    res.status(200).send('Tweet updated successfully');
+  } catch (error) {
+    console.error('Error updating tweet:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+app.delete("/tweets/:id", async (req, res) => {
+  const tweetId = req.params.id;
+
+  try {
+    const tweetRef = db.collection('tweets').doc(tweetId);
+    const snapshot = await tweetRef.get();
+
+    if (!snapshot.exists) {
+      return res.status(404).send('Tweet not found');
+    }
+
+    await tweetRef.delete();
+
+    res.status(200).send('Tweet deleted successfully');
+  } catch (error) {
+    console.error('Error deleting tweet:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
 
 
 function generateAccessToken(user) {
@@ -247,7 +363,6 @@ function authenticateToken(req, res, next) {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
   if (!token) return res.sendStatus(401);
-
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
     if (err) return res.sendStatus(403);
     req.user = user;
