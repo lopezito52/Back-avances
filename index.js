@@ -20,7 +20,7 @@ const allowedOrigins = [
 
 app.use(
   cors({
-    origin: "https://my-react-8egbsueim-samuels-projects-a441388c.vercel.app",
+    origin: "https://my-react-dg9grxcac-samuels-projects-a441388c.vercel.app",
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
