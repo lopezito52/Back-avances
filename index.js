@@ -14,13 +14,11 @@ const PORT = process.env.PORT || 3000;
 let refreshTokens = [];
 
 app.use(express.json());
-const allowedOrigins = [
-  "https://my-react-76mksnlbf-samuels-projects-a441388c.vercel.app",
-];
+const allowedOrigins = ["*"];
 
 app.use(
   cors({
-    origin: "https://my-react-76mksnlbf-samuels-projects-a441388c.vercel.app",
+    origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
